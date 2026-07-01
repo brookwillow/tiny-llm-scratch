@@ -1,0 +1,11 @@
+{
+    "vocab_size": 6400,
+    "data_path": "tokenizer_data.txt",
+    "vocab_output_path": "vocab.json",
+    "merges_output_path": "merges.txt",
+    "special_tokens": ["<unk>", "<s>", "</s>", "<|im_start|>", "<|im_end|>", "<|tool_call|>", "<|tool_response|>"],
+    "max_chars": 50000000,
+    "random_sample": true,
+    "sample_seed": 42,
+    "progress_interval": 100
+}
