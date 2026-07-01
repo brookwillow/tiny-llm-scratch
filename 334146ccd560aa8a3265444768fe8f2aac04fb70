@@ -1,0 +1,44 @@
+tokenizer/train_bpe_tokenizer.py
+  5a4e7a480e3ae9f0 3,6,9-11,49-59,61-68,70-130,136,167-170,175-178,189,197-198,202-204,207-210,212-216,222-225,234-238,283-291,306,321,332,345,348-349,353,360-361,367-368,371,373,375,379,383-385
+  bd1046ca67287787 2,4-5,12-48,60,69,131-135,137-166,171-174,179-188,190-195,201,205-206,211,217-221,226-233,239-282,292-293,296-305,307-312,314-320,322-331,333-344,346-347,350-352,354-359,362-366,369-370,372,374,376-377,380-382,387-389
+tokenizer/tokenizer_config.json
+  bd1046ca67287787 3-6
+  5a4e7a480e3ae9f0 2,7-11
+tokenizer/.gitignore
+  bd1046ca67287787 1-2
+README.md
+  bd1046ca67287787 1-14,16-17,19-30,32-36,38-47,49-61,63-70,72-80,82-104,117-132,134-138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.23",
+  "base_commit_sha": "334146ccd560aa8a3265444768fe8f2aac04fb70",
+  "prompts": {
+    "5a4e7a480e3ae9f0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1e11-f24b-7150-b4ae-e338580bc86d",
+        "model": "gpt-5.5"
+      },
+      "human_author": "wangj77",
+      "messages": [],
+      "total_additions": 228,
+      "total_deletions": 121,
+      "accepted_lines": 151,
+      "overriden_lines": 0
+    },
+    "bd1046ca67287787": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b01ab044-77a4-4ca1-baec-d3249ee35c49",
+        "model": "claude-sonnet-4.6"
+      },
+      "human_author": "wangj77",
+      "messages": [],
+      "total_additions": 822,
+      "total_deletions": 259,
+      "accepted_lines": 356,
+      "overriden_lines": 1
+    }
+  }
+}
