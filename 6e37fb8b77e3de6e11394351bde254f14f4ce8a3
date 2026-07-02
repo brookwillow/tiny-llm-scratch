@@ -1,0 +1,23 @@
+tokenizer/bpe_tokenizer.py
+  5a4e7a480e3ae9f0 2,61,80-82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.23",
+  "base_commit_sha": "6e37fb8b77e3de6e11394351bde254f14f4ce8a3",
+  "prompts": {
+    "5a4e7a480e3ae9f0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1e11-f24b-7150-b4ae-e338580bc86d",
+        "model": "gpt-5.5"
+      },
+      "human_author": "wangj77",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 8,
+      "accepted_lines": 3661616,
+      "overriden_lines": 0
+    }
+  }
+}
