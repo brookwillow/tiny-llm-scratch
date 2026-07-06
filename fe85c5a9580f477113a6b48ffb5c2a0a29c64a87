@@ -1,0 +1,36 @@
+model/model.py
+  fcdb06e488e5fcba 13-16,38-39,41,60-62,88-89,91,118,120-122,124-136,138-141,151-152,159-162,164,168,173,202-203,209,211,213-215,219,221-222,224-228,230-236,238-240,255-256,258,261,268-273
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.24",
+  "base_commit_sha": "fe85c5a9580f477113a6b48ffb5c2a0a29c64a87",
+  "prompts": {
+    "5a4e7a480e3ae9f0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1e11-f24b-7150-b4ae-e338580bc86d",
+        "model": "gpt-5.5"
+      },
+      "human_author": "wangj77",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 3661611,
+      "overriden_lines": 0
+    },
+    "fcdb06e488e5fcba": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "0054f0b1-bd5c-4bdc-a285-168c3479a156",
+        "model": "copilot/claude-opus-4.6"
+      },
+      "human_author": "wangj77",
+      "messages": [],
+      "total_additions": 104,
+      "total_deletions": 59,
+      "accepted_lines": 78,
+      "overriden_lines": 2
+    }
+  }
+}
