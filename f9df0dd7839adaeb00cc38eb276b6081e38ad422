@@ -1,0 +1,25 @@
+tests/test_prepare_data.py
+  5a4e7a480e3ae9f0 1-56
+data/prepare_data.py
+  5a4e7a480e3ae9f0 16-19,36,95-97,99-101,104-109,111,114,120-121,124-132,135-272,274-278,280-282,284-302,304-307,310-323,327-330
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.24",
+  "base_commit_sha": "f9df0dd7839adaeb00cc38eb276b6081e38ad422",
+  "prompts": {
+    "5a4e7a480e3ae9f0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1e11-f24b-7150-b4ae-e338580bc86d",
+        "model": "gpt-5.5"
+      },
+      "human_author": "brook",
+      "messages": [],
+      "total_additions": 281,
+      "total_deletions": 42,
+      "accepted_lines": 281,
+      "overriden_lines": 0
+    }
+  }
+}
