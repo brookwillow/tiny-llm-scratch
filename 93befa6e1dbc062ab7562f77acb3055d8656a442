@@ -1,0 +1,23 @@
+tokenizer/bpe_tokenizer.py
+  5a4e7a480e3ae9f0 2,10-11,14,16,18-22,27-28,32,41,44-59,61,64,69,72,76-80,98-145,147-156,158,160-186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.24",
+  "base_commit_sha": "93befa6e1dbc062ab7562f77acb3055d8656a442",
+  "prompts": {
+    "5a4e7a480e3ae9f0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1e11-f24b-7150-b4ae-e338580bc86d",
+        "model": "gpt-5.5"
+      },
+      "human_author": "brook",
+      "messages": [],
+      "total_additions": 128,
+      "total_deletions": 91,
+      "accepted_lines": 128,
+      "overriden_lines": 0
+    }
+  }
+}
