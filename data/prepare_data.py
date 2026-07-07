@@ -39,17 +39,52 @@ def download_dataset():
         return
 
     print(f"正在从 ModelScope 下载 {DATASET_ID}/{DATASET_FILE} ...")
-    from modelscope.msdatasets import MsDataset
+    try:
+        from modelscope import snapshot_download
+    except ImportError:
+        from modelscope.hub.snapshot_download import snapshot_download
 
-    # 下载单个文件到本地
-    from modelscope.hub.api import HubApi
-    api = HubApi()
-    api.download(
-        repo_id=DATASET_ID,
-        repo_type="dataset",
-        file_path=DATASET_FILE,
-        local_dir=str(DATA_DIR),
-    )
+    last_error = None
+    download_kwargs_list = [
+        {
+            "repo_type": "dataset",
+            "allow_file_pattern": DATASET_FILE,
+            "local_dir": str(DATA_DIR),
+        },
+        {
+            "repo_type": "dataset",
+            "allow_patterns": DATASET_FILE,
+            "local_dir": str(DATA_DIR),
+        },
+        {
+            "repo_type": "dataset",
+            "allow_file_pattern": DATASET_FILE,
+            "cache_dir": str(DATA_DIR),
+        },
+        {
+            "repo_type": "dataset",
+            "allow_patterns": DATASET_FILE,
+            "cache_dir": str(DATA_DIR),
+        },
+    ]
+
+    for kwargs in download_kwargs_list:
+        try:
+            downloaded_dir = Path(snapshot_download(DATASET_ID, **kwargs))
+            break
+        except TypeError as exc:
+            last_error = exc
+    else:
+        raise RuntimeError("当前 modelscope 版本不支持脚本中的 snapshot_download 参数") from last_error
+
+    if not RAW_FILE.exists():
+        matched_files = list(downloaded_dir.rglob(DATASET_FILE))
+        if matched_files:
+            RAW_FILE.write_bytes(matched_files[0].read_bytes())
+
+    if not RAW_FILE.exists():
+        raise FileNotFoundError(f"下载完成但未找到 {RAW_FILE}，请检查 ModelScope 缓存目录: {downloaded_dir}")
+
     print(f"下载完成: {RAW_FILE}")
 
 
