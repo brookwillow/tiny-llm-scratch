@@ -1,3 +1,11 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+
+# 数据文件
+*.bin
+data/*.jsonl
+
+# 训练产物
+train/out/
+*.pt

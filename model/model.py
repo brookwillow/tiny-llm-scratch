@@ -4,16 +4,17 @@ from torch import nn
 from einops import rearrange
 
 class ModelConfig:
-    def __init__(self):
-        self.vocab_size = 6400
-        self.hidden_size = 768
-        self.num_heads = 12
-        self.num_layers = 12
-        self.max_seq_len = 512
+    def __init__(self, vocab_size: int = 6400, hidden_size: int = 768, num_heads: int = 12, num_layers: int = 12, max_seq_len: int = 512, 
+                 device = None, dtype = torch.float32):
+        self.vocab_size = vocab_size
+        self.hidden_size = hidden_size
+        self.num_heads = num_heads
+        self.num_layers = num_layers
+        self.max_seq_len = max_seq_len
         # SwiGLU 惯例: 8/3 * hidden_size ≈ 2048
-        self.hidden_size_ff = int(8 / 3 * self.hidden_size)  
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.dtype = torch.float32
+        self.hidden_size_ff = int(8 / 3 * hidden_size)  
+        self.device = device if device is not None else ("cuda" if torch.cuda.is_available() else "cpu")
+        self.dtype = dtype
 
 class Linear(nn.Module):
     '''
