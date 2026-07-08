@@ -250,7 +250,7 @@ class Model(nn.Module):
 
         # 嵌入层
         # self.embedding = nn.Embedding(config.vocab_size, config.hidden_size)
-        self.embedding = Embedding(config.vocab_size, config.hidden_size)
+        self.embedding = Embedding(config.vocab_size, config.hidden_size, device=config.device, dtype=config.dtype)
         # transformer block
         self.transformer_blocks = nn.ModuleList([TransformerBlock(config.hidden_size, config.num_heads, config.hidden_size_ff, config.max_seq_len, config.device, config.dtype) for _ in range(config.num_layers)])
         # 最终归一化层
@@ -278,6 +278,6 @@ class Model(nn.Module):
 if __name__ == "__main__":
     config = ModelConfig()
     model = Model(config)
-    X = torch.randint(0, config.vocab_size, (2, 10))  # 假设输入是一个batch_size为2，序列长度为10的随机整数张量
+    X = torch.randint(0, config.vocab_size, (2, 10), device=config.device)  # 假设输入是一个batch_size为2，序列长度为10的随机整数张量
     output = model(X)
     print(model)

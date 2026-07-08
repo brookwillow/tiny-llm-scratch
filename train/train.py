@@ -183,6 +183,13 @@ def load_checkpoint(
     # 4. 返回保存时的迭代次数
     return checkpoint['iteration']
 
+
+def move_optimizer_state_to_device(optimizer: torch.optim.Optimizer, device: str):
+    for state in optimizer.state.values():
+        for key, value in state.items():
+            if torch.is_tensor(value):
+                state[key] = value.to(device)
+
 class AdamW(Optimizer):
     def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=0.01):
         # 1. 基本参数检查
@@ -328,6 +335,7 @@ def main():
 
     # 3. 初始化模型
     model = Model(config=config)
+    model.to(args.device)
 
     print(f"Model Config: Norm={args.norm_mode}, UseNorm={use_rms_norm}, FFN={args.ffn_type}")
 
@@ -339,6 +347,8 @@ def main():
     ckpt_path = os.path.join(args.out_dir, "ckpt.pt")
     if os.path.exists(ckpt_path):
         start_iter = load_checkpoint(ckpt_path, model, optimizer)
+        model.to(args.device)
+        move_optimizer_state_to_device(optimizer, args.device)
         print(f"Resuming from iteration {start_iter}")
 
     # 6. 初始化 WandB 监控
