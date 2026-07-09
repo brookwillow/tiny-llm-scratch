@@ -1,0 +1,23 @@
+train/train_pretrain.py
+  5a4e7a480e3ae9f0 269
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.24",
+  "base_commit_sha": "14215c2a8ac0d6646a6fb8412c7241ec3c44e82f",
+  "prompts": {
+    "5a4e7a480e3ae9f0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1e11-f24b-7150-b4ae-e338580bc86d",
+        "model": "gpt-5.5"
+      },
+      "human_author": "brook",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 2,
+      "accepted_lines": 8,
+      "overriden_lines": 0
+    }
+  }
+}
