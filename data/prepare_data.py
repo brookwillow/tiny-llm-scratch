@@ -1,13 +1,19 @@
 """
-数据准备脚本：从 ModelScope 下载 pretrain_t2t.jsonl，使用 BPE tokenizer 编码后
-保存为训练脚本可直接读取的 uint16 二进制文件。
+数据准备脚本：从 ModelScope 下载 pretrain_t2t.jsonl / sft_t2t.jsonl，并完成训练前处理。
+
+pretrain 数据会编码为训练脚本可直接读取的 uint16 二进制文件。
+SFT 数据只做格式归一化和 train/val 拆分，不在 prepare 阶段 tokenizer。
 
 用法:
-    python data/prepare_data.py
+    python data/prepare_data.py --mode pretrain
+    python data/prepare_data.py --mode sft
+    python data/prepare_data.py --mode all
 
 输出:
     data/train.bin  — 训练集 (90%)
     data/val.bin    — 验证集 (10%)
+    data/sft_train.jsonl — SFT 训练集 raw messages
+    data/sft_val.jsonl   — SFT 验证集 raw messages
 """
 
 import os
@@ -23,26 +29,31 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(ROOT_DIR))
 
+from config.model_config import add_model_config_arg
 from tokenizer.bpe_tokenizer import BPETokenizer
 
 # --- 配置 ---
 DATASET_ID = "gongjy/minimind_dataset"
 DATASET_FILE = "pretrain_t2t.jsonl"
+SFT_DATASET_FILE = "sft_t2t.jsonl"
 DATA_DIR = Path(__file__).resolve().parent
 RAW_FILE = DATA_DIR / DATASET_FILE
+SFT_RAW_FILE = DATA_DIR / SFT_DATASET_FILE
 TRAIN_BIN = DATA_DIR / "train.bin"
 VAL_BIN = DATA_DIR / "val.bin"
+SFT_TRAIN_JSONL = DATA_DIR / "sft_train.jsonl"
+SFT_VAL_JSONL = DATA_DIR / "sft_val.jsonl"
 VAL_RATIO = 0.1
 _WORKER_TOKENIZER = None
 
 
-def download_dataset():
+def download_dataset_file(dataset_file: str, output_file: Path):
     """从 ModelScope 下载数据集文件（如果本地不存在）"""
-    if RAW_FILE.exists():
-        print(f"数据集已存在: {RAW_FILE}")
+    if output_file.exists():
+        print(f"数据集已存在: {output_file}")
         return
 
-    print(f"正在从 ModelScope 下载 {DATASET_ID}/{DATASET_FILE} ...")
+    print(f"正在从 ModelScope 下载 {DATASET_ID}/{dataset_file} ...")
     try:
         from modelscope import snapshot_download
     except ImportError:
@@ -52,22 +63,22 @@ def download_dataset():
     download_kwargs_list = [
         {
             "repo_type": "dataset",
-            "allow_file_pattern": DATASET_FILE,
+            "allow_file_pattern": dataset_file,
             "local_dir": str(DATA_DIR),
         },
         {
             "repo_type": "dataset",
-            "allow_patterns": DATASET_FILE,
+            "allow_patterns": dataset_file,
             "local_dir": str(DATA_DIR),
         },
         {
             "repo_type": "dataset",
-            "allow_file_pattern": DATASET_FILE,
+            "allow_file_pattern": dataset_file,
             "cache_dir": str(DATA_DIR),
         },
         {
             "repo_type": "dataset",
-            "allow_patterns": DATASET_FILE,
+            "allow_patterns": dataset_file,
             "cache_dir": str(DATA_DIR),
         },
     ]
@@ -81,15 +92,23 @@ def download_dataset():
     else:
         raise RuntimeError("当前 modelscope 版本不支持脚本中的 snapshot_download 参数") from last_error
 
-    if not RAW_FILE.exists():
-        matched_files = list(downloaded_dir.rglob(DATASET_FILE))
+    if not output_file.exists():
+        matched_files = list(downloaded_dir.rglob(dataset_file))
         if matched_files:
-            RAW_FILE.write_bytes(matched_files[0].read_bytes())
+            output_file.write_bytes(matched_files[0].read_bytes())
 
-    if not RAW_FILE.exists():
-        raise FileNotFoundError(f"下载完成但未找到 {RAW_FILE}，请检查 ModelScope 缓存目录: {downloaded_dir}")
+    if not output_file.exists():
+        raise FileNotFoundError(f"下载完成但未找到 {output_file}，请检查 ModelScope 缓存目录: {downloaded_dir}")
 
-    print(f"下载完成: {RAW_FILE}")
+    print(f"下载完成: {output_file}")
+
+
+def download_dataset():
+    download_dataset_file(DATASET_FILE, RAW_FILE)
+
+
+def download_sft_dataset():
+    download_dataset_file(SFT_DATASET_FILE, SFT_RAW_FILE)
 
 
 def init_worker(vocab_path: str, merges_path: str):
@@ -257,6 +276,96 @@ def tokenize_jsonl_to_bins(
     }
 
 
+def print_sft_progress(
+    processed_lines: int,
+    train_samples: int,
+    val_samples: int,
+    started_at: float,
+    total_lines: int | None,
+) -> None:
+    elapsed = time.time() - started_at
+    lines_per_sec = processed_lines / elapsed if elapsed > 0 else 0.0
+    if total_lines and lines_per_sec > 0:
+        remaining_lines = max(0, total_lines - processed_lines)
+        eta = remaining_lines / lines_per_sec
+        percent = processed_lines / total_lines * 100
+        progress = f"{processed_lines:,}/{total_lines:,} ({percent:.2f}%)"
+    else:
+        eta = float("inf")
+        progress = f"{processed_lines:,}"
+
+    print(
+        "  "
+        f"已处理 {progress} 行, "
+        f"samples={train_samples + val_samples:,} "
+        f"(train={train_samples:,}, val={val_samples:,}), "
+        f"{lines_per_sec:.1f} lines/s, "
+        f"elapsed={format_duration(elapsed)}, eta={format_duration(eta)}",
+        flush=True,
+    )
+
+
+def split_sft_jsonl_to_jsonl(
+    raw_file: Path,
+    train_jsonl: Path,
+    val_jsonl: Path,
+    val_ratio: float,
+    max_lines: int | None,
+    log_interval: int,
+    total_lines: int | None,
+) -> dict[str, int]:
+    from train.train_sft import normalize_sft_messages
+
+    processed_lines = 0
+    train_samples = 0
+    val_samples = 0
+    skipped_lines = 0
+    started_at = time.time()
+
+    train_jsonl.parent.mkdir(parents=True, exist_ok=True)
+    val_jsonl.parent.mkdir(parents=True, exist_ok=True)
+
+    with raw_file.open("r", encoding="utf-8") as raw_f, train_jsonl.open("w", encoding="utf-8") as train_f, val_jsonl.open(
+        "w", encoding="utf-8"
+    ) as val_f:
+        for line_no, raw_line in enumerate(raw_f, start=1):
+            if max_lines is not None and processed_lines >= max_lines:
+                break
+            if not raw_line.strip():
+                continue
+
+            try:
+                sample = json.loads(raw_line)
+                messages = normalize_sft_messages(sample)
+                if not any(message["role"] == "assistant" for message in messages):
+                    skipped_lines += 1
+                    continue
+
+                processed_lines += 1
+                out_line = json.dumps({"messages": messages}, ensure_ascii=False) + "\n"
+                if should_write_val(processed_lines, val_ratio):
+                    val_f.write(out_line)
+                    val_samples += 1
+                else:
+                    train_f.write(out_line)
+                    train_samples += 1
+            except Exception as exc:
+                skipped_lines += 1
+                if skipped_lines <= 5:
+                    print(f"跳过第 {line_no} 行: {exc}")
+
+            if log_interval > 0 and processed_lines > 0 and processed_lines % log_interval == 0:
+                print_sft_progress(processed_lines, train_samples, val_samples, started_at, total_lines)
+
+    print_sft_progress(processed_lines, train_samples, val_samples, started_at, total_lines)
+    return {
+        "processed_lines": processed_lines,
+        "train_samples": train_samples,
+        "val_samples": val_samples,
+        "skipped_lines": skipped_lines,
+    }
+
+
 def tokenize_and_save(args):
     """将 JSONL 数据编码为 token ids 并流式保存为二进制文件"""
     train_bin = Path(args.train_bin)
@@ -307,11 +416,52 @@ def tokenize_and_save(args):
     print(f"验证集: {stats['val_tokens']:,} tokens -> {val_bin}")
 
 
+def split_sft_and_save(args):
+    """将 SFT JSONL 数据归一化为 raw messages，并拆分 train/val"""
+    raw_file = Path(args.sft_raw_file)
+    train_jsonl = Path(args.sft_train_jsonl)
+    val_jsonl = Path(args.sft_val_jsonl)
+
+    if (train_jsonl.exists() or val_jsonl.exists()) and not args.overwrite:
+        print(f"输出文件已存在: {train_jsonl}, {val_jsonl}")
+        print("如需重新生成，请加 --overwrite。")
+        return
+
+    total_lines = None
+    if not args.no_count_total:
+        print("正在统计 SFT 总行数用于 ETA ...")
+        total_lines = count_jsonl_lines(raw_file, max_lines=args.max_lines)
+        print(f"预计处理 SFT 行数: {total_lines:,}")
+
+    print(f"正在读取并拆分 SFT 数据 {raw_file} ...")
+    print(f"max_lines={args.max_lines}, val_ratio={args.val_ratio}")
+    stats = split_sft_jsonl_to_jsonl(
+        raw_file=raw_file,
+        train_jsonl=train_jsonl,
+        val_jsonl=val_jsonl,
+        val_ratio=args.val_ratio,
+        max_lines=args.max_lines,
+        log_interval=args.log_interval,
+        total_lines=total_lines,
+    )
+
+    print("SFT 拆分完成")
+    print(f"处理行数: {stats['processed_lines']:,}")
+    print(f"跳过行数: {stats['skipped_lines']:,}")
+    print(f"SFT 训练集: {stats['train_samples']:,} samples -> {train_jsonl}")
+    print(f"SFT 验证集: {stats['val_samples']:,} samples -> {val_jsonl}")
+
+
 def parse_args():
-    parser = argparse.ArgumentParser(description="Prepare pretrain token bins from JSONL text data.")
+    parser = argparse.ArgumentParser(description="Prepare pretrain token bins and raw SFT JSONL splits.")
+    add_model_config_arg(parser, default=str(ROOT_DIR / "configs" / "model_512x6.json"))
+    parser.add_argument("--mode", type=str, default="pretrain", choices=["pretrain", "sft", "all"])
     parser.add_argument("--raw_file", type=str, default=str(RAW_FILE))
     parser.add_argument("--train_bin", type=str, default=str(TRAIN_BIN))
     parser.add_argument("--val_bin", type=str, default=str(VAL_BIN))
+    parser.add_argument("--sft_raw_file", type=str, default=str(SFT_RAW_FILE))
+    parser.add_argument("--sft_train_jsonl", type=str, default=str(SFT_TRAIN_JSONL))
+    parser.add_argument("--sft_val_jsonl", type=str, default=str(SFT_VAL_JSONL))
     parser.add_argument("--val_ratio", type=float, default=VAL_RATIO)
     parser.add_argument("--max_lines", type=int, default=None)
     parser.add_argument("--num_workers", type=int, default=1)
@@ -326,5 +476,11 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     if not args.no_download:
-        download_dataset()
-    tokenize_and_save(args)
+        if args.mode in {"pretrain", "all"}:
+            download_dataset()
+        if args.mode in {"sft", "all"}:
+            download_sft_dataset()
+    if args.mode in {"pretrain", "all"}:
+        tokenize_and_save(args)
+    if args.mode in {"sft", "all"}:
+        split_sft_and_save(args)

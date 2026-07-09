@@ -12,6 +12,7 @@ import wandb
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from model.model import Model, ModelConfig
+from config.model_config import add_model_config_arg, resolve_model_config
 
 def cross_entropy(logits, target):
     # logits:  (batch_size, seq_len, vocab_size)
@@ -265,14 +266,15 @@ class AdamW(Optimizer):
 
 def main():
     parser = argparse.ArgumentParser()
+    add_model_config_arg(parser, default=os.path.join(os.path.dirname(__file__), "..", "configs", "model_512x6.json"))
     # --- 模型基础超参数 ---
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--context_length", type=int, default=256)
-    parser.add_argument("--hidden_size", type=int, default=512)
-    parser.add_argument("--num_layers", type=int, default=4)
-    parser.add_argument("--num_heads", type=int, default=8)
+    parser.add_argument("--context_length", type=int, default=None)
+    parser.add_argument("--hidden_size", type=int, default=None)
+    parser.add_argument("--num_layers", type=int, default=None)
+    parser.add_argument("--num_heads", type=int, default=None)
     parser.add_argument("--d_ff", type=int, default=2048)
-    parser.add_argument("--vocab_size", type=int, default=10000)
+    parser.add_argument("--vocab_size", type=int, default=None)
 
     # --- 实验/消融 (Ablation) 开关 ---
     # Ablation 1: 移除 RMSNorm
@@ -301,6 +303,7 @@ def main():
     parser.add_argument("--run_name", type=str, default=None, help="WandB 实验名称")
 
     args = parser.parse_args()
+    resolve_model_config(args)
 
     os.makedirs(args.out_dir, exist_ok=True)
 
