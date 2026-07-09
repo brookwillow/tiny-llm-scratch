@@ -454,7 +454,7 @@ def split_sft_and_save(args):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Prepare pretrain token bins and raw SFT JSONL splits.")
-    add_model_config_arg(parser, default=str(ROOT_DIR / "configs" / "model_512x6.json"))
+    add_model_config_arg(parser, default=str(ROOT_DIR / "config" / "model.json"))
     parser.add_argument("--mode", type=str, default="pretrain", choices=["pretrain", "sft", "all"])
     parser.add_argument("--raw_file", type=str, default=str(RAW_FILE))
     parser.add_argument("--train_bin", type=str, default=str(TRAIN_BIN))

@@ -266,7 +266,7 @@ class AdamW(Optimizer):
 
 def main():
     parser = argparse.ArgumentParser()
-    add_model_config_arg(parser, default=os.path.join(os.path.dirname(__file__), "..", "configs", "model_512x6.json"))
+    add_model_config_arg(parser, default=os.path.join(os.path.dirname(__file__), "..", "config", "model.json"))
     # --- 模型基础超参数 ---
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--context_length", type=int, default=None)

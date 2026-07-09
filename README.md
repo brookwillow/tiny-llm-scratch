@@ -96,7 +96,7 @@ tiny-llm-scratch/
 ├── model/                       # 模型定义（待实现）
 ├── train.py                     # 预训练入口（待实现）
 ├── generate.py                  # 推理入口（待实现）
-└── configs/                     # 超参数配置（待实现）
+└── config/                      # 配置加载代码和模型配置
 ```
 
 ## 超参数预设（Tiny 版本）

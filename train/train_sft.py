@@ -124,7 +124,7 @@ def load_sft_feature_from_sample(
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Supervised fine-tune the tiny LLM on chat JSONL data.")
-    add_model_config_arg(parser, default=str(ROOT_DIR / "configs" / "model_512x6.json"))
+    add_model_config_arg(parser, default=str(ROOT_DIR / "config" / "model.json"))
 
     parser.add_argument("--sft_data_path", type=str, required=True)
     parser.add_argument("--valid_sft_data_path", type=str, default=None)

@@ -32,7 +32,7 @@ def apply_model_config(args, config: dict) -> None:
             setattr(args, key, config[key])
 
 
-def add_model_config_arg(parser, default: str | None = "configs/model_512x6.json") -> None:
+def add_model_config_arg(parser, default: str | None = "config/model.json") -> None:
     parser.add_argument("--model_config", type=str, default=default)
 
 
