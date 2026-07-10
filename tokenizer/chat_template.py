@@ -87,6 +87,31 @@ def encode_chat_messages(
     return EncodedChat(input_ids=input_ids, loss_mask=loss_mask)
 
 
+def encode_chat_generation_prompt(
+    messages: list[dict[str, str]],
+    tokenizer,
+    config_path: str | Path = DEFAULT_CONFIG_PATH,
+) -> list[int]:
+    """Encode chat history and append the assistant header to be completed."""
+    config = load_chat_template_config(config_path)
+    im_start_id = tokenizer.vocab[config.im_start]
+    im_end_id = tokenizer.vocab[config.im_end]
+
+    input_ids: list[int] = []
+    for message in messages:
+        role = validate_role(message["role"])
+        content = message.get("content", "")
+        input_ids.extend([im_start_id])
+        input_ids.extend(tokenizer.encode(f"{role}\n"))
+        input_ids.extend(tokenizer.encode(content))
+        input_ids.extend([im_end_id])
+        input_ids.extend(tokenizer.encode("\n"))
+
+    input_ids.extend([im_start_id])
+    input_ids.extend(tokenizer.encode("assistant\n"))
+    return input_ids
+
+
 def validate_role(role: str) -> str:
     if role not in {"system", "user", "assistant", "tool"}:
         raise ValueError(f"unsupported chat role: {role!r}")
