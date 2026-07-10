@@ -168,49 +168,68 @@ def parse_args():
     return parser.parse_args()
 
 
-def load_sft_dataset(path: str, tokenizer, tokenizer_config: str, context_length: int, pad_id: int, max_samples: int | None):
-    features = []
-    skipped = 0
-    start_time = time.time()
+class JsonlSFTDataset:
+    def __init__(self, path: str | Path, max_samples: int | None = None):
+        self.path = Path(path)
+        self.offsets = self._build_offsets(max_samples=max_samples)
+        if not self.offsets:
+            raise ValueError(f"no usable SFT lines found in {self.path}")
 
-    with open(path, "r", encoding="utf-8") as f:
-        for line_no, line in enumerate(f, start=1):
-            if max_samples is not None and len(features) >= max_samples:
-                break
-            if not line.strip():
-                continue
-
-            try:
-                sample = json.loads(line)
-                feature = load_sft_feature_from_sample(sample, tokenizer, tokenizer_config, context_length, pad_id)
-                if sum(feature["loss_mask"]) <= 0:
-                    skipped += 1
+    def _build_offsets(self, max_samples: int | None) -> list[int]:
+        offsets: list[int] = []
+        started_at = time.time()
+        with self.path.open("rb") as f:
+            while True:
+                offset = f.tell()
+                line = f.readline()
+                if not line:
+                    break
+                if not line.strip():
                     continue
-                features.append(feature)
-            except Exception as exc:
-                skipped += 1
-                if skipped <= 5:
-                    print(f"跳过第 {line_no} 行: {exc}")
+                offsets.append(offset)
+                if max_samples is not None and len(offsets) >= max_samples:
+                    break
+                if len(offsets) % 100000 == 0:
+                    elapsed = max(time.time() - started_at, 1e-6)
+                    print(f"  已索引 {len(offsets)} 行, 速度 {len(offsets) / elapsed:.1f} lines/s")
+        print(f"SFT 索引完成: {self.path}, samples={len(offsets)}")
+        return offsets
 
-            if line_no % 1000 == 0:
-                elapsed = max(time.time() - start_time, 1e-6)
-                speed = line_no / elapsed
-                print(f"  已读取 {line_no} 行, 可训练样本 {len(features)}, 速度 {speed:.1f} lines/s")
+    def __len__(self) -> int:
+        return len(self.offsets)
 
-    if not features:
-        raise ValueError(f"no usable SFT samples loaded from {path}")
+    def get_sample(self, index: int) -> dict:
+        with self.path.open("rb") as f:
+            f.seek(self.offsets[index])
+            line = f.readline()
+        return json.loads(line.decode("utf-8"))
 
-    print(f"加载完成: {path}, 可训练样本 {len(features)}, 跳过 {skipped}")
-    return features
+    def random_sample(self) -> dict:
+        return self.get_sample(random.randrange(len(self.offsets)))
 
 
-def get_sft_batch(samples, batch_size: int, device: str):
+def get_sft_batch(dataset: JsonlSFTDataset, tokenizer, tokenizer_config: str, context_length: int, pad_id: int, batch_size: int, device: str):
     import torch
 
-    batch = random.choices(samples, k=batch_size)
-    x = torch.tensor([sample["x"] for sample in batch], dtype=torch.long, device=device)
-    y = torch.tensor([sample["y"] for sample in batch], dtype=torch.long, device=device)
-    mask = torch.tensor([sample["loss_mask"] for sample in batch], dtype=torch.float32, device=device)
+    features = []
+    attempts = 0
+    max_attempts = max(batch_size * 10, 100)
+    while len(features) < batch_size and attempts < max_attempts:
+        attempts += 1
+        sample = dataset.random_sample()
+        try:
+            feature = load_sft_feature_from_sample(sample, tokenizer, tokenizer_config, context_length, pad_id)
+        except Exception:
+            continue
+        if sum(feature["loss_mask"]) > 0:
+            features.append(feature)
+
+    if len(features) < batch_size:
+        raise RuntimeError(f"unable to build SFT batch: got {len(features)} samples after {attempts} attempts")
+
+    x = torch.tensor([sample["x"] for sample in features], dtype=torch.long, device=device)
+    y = torch.tensor([sample["y"] for sample in features], dtype=torch.long, device=device)
+    mask = torch.tensor([sample["loss_mask"] for sample in features], dtype=torch.float32, device=device)
     return x, y, mask
 
 
@@ -234,14 +253,14 @@ def load_model_state(checkpoint_path: str, model):
     model.load_state_dict(state_dict)
 
 
-def evaluate(model, samples, batch_size: int, device: str, eval_iters: int):
+def evaluate(model, dataset, tokenizer, tokenizer_config: str, context_length: int, pad_id: int, batch_size: int, device: str, eval_iters: int):
     import torch
 
     model.eval()
     losses = []
     with torch.no_grad():
         for _ in range(eval_iters):
-            x, y, mask = get_sft_batch(samples, batch_size, device)
+            x, y, mask = get_sft_batch(dataset, tokenizer, tokenizer_config, context_length, pad_id, batch_size, device)
             logits = model(x)
             losses.append(masked_cross_entropy(logits, y, mask).item())
     model.train()
@@ -278,26 +297,8 @@ def main():
         raise ValueError(f"pad token {args.pad_token!r} not found in tokenizer vocab")
     pad_id = tokenizer.vocab[args.pad_token]
 
-    train_samples = load_sft_dataset(
-        args.sft_data_path,
-        tokenizer,
-        args.tokenizer_config,
-        args.context_length,
-        pad_id,
-        args.max_samples,
-    )
-    valid_samples = (
-        load_sft_dataset(
-            args.valid_sft_data_path,
-            tokenizer,
-            args.tokenizer_config,
-            args.context_length,
-            pad_id,
-            args.max_samples,
-        )
-        if args.valid_sft_data_path
-        else train_samples
-    )
+    train_dataset = JsonlSFTDataset(args.sft_data_path, max_samples=args.max_samples)
+    valid_dataset = JsonlSFTDataset(args.valid_sft_data_path, max_samples=args.max_samples) if args.valid_sft_data_path else train_dataset
 
     pretrain_data = None
     if args.pretrain_data_path and args.pretrain_mix_ratio > 0:
@@ -339,7 +340,7 @@ def main():
             print(f"wandb 初始化失败, 改为本地训练: {exc}")
 
     print(
-        f"SFT 开始: train_samples={len(train_samples)}, valid_samples={len(valid_samples)}, "
+        f"SFT 开始: train_samples={len(train_dataset)}, valid_samples={len(valid_dataset)}, "
         f"device={device}, batch_size={args.batch_size}, context={args.context_length}"
     )
 
@@ -354,7 +355,15 @@ def main():
             x, y = get_batch(pretrain_data, args.batch_size, args.context_length, device)
             mask = torch.ones_like(y, dtype=torch.float32, device=device)
         else:
-            x, y, mask = get_sft_batch(train_samples, args.batch_size, device)
+            x, y, mask = get_sft_batch(
+                train_dataset,
+                tokenizer,
+                args.tokenizer_config,
+                args.context_length,
+                pad_id,
+                args.batch_size,
+                device,
+            )
 
         logits = model(x)
         loss = masked_cross_entropy(logits, y, mask)
@@ -371,7 +380,17 @@ def main():
                 wandb_run.log({"train/loss": train_loss, "lr": lr, "iter": it + 1})
 
         if it % args.eval_interval == 0 or it == args.max_iters - 1:
-            val_loss = evaluate(model, valid_samples, args.batch_size, device, args.eval_iters)
+            val_loss = evaluate(
+                model,
+                valid_dataset,
+                tokenizer,
+                args.tokenizer_config,
+                args.context_length,
+                pad_id,
+                args.batch_size,
+                device,
+                args.eval_iters,
+            )
             print(f"Iter {it}: val_loss {val_loss:.4f}")
             if wandb_run is not None:
                 wandb_run.log({"val/loss": val_loss, "iter": it + 1})
