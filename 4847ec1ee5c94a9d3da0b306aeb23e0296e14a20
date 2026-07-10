@@ -1,0 +1,27 @@
+tokenizer/chat_template.py
+  5a4e7a480e3ae9f0 90-114
+infer/generate.py
+  5a4e7a480e3ae9f0 10,25-26,30,33-38,80,93-94,101-103,111-125,129,135,137
+tests/test_chat_template_generation.py
+  5a4e7a480e3ae9f0 1-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.24",
+  "base_commit_sha": "4847ec1ee5c94a9d3da0b306aeb23e0296e14a20",
+  "prompts": {
+    "5a4e7a480e3ae9f0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1e11-f24b-7150-b4ae-e338580bc86d",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "brook",
+      "messages": [],
+      "total_additions": 95,
+      "total_deletions": 11,
+      "accepted_lines": 95,
+      "overriden_lines": 0
+    }
+  }
+}
