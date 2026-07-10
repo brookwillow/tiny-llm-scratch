@@ -1,0 +1,23 @@
+train/train_sft.py
+  5a4e7a480e3ae9f0 171-187,189-196,198-199,201-205,207-208,211,214-232,256,263,300-301,343,358-366,383-393
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.24",
+  "base_commit_sha": "1cd1728bfcece064d5a52cadf450ea0581213100",
+  "prompts": {
+    "5a4e7a480e3ae9f0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1e11-f24b-7150-b4ae-e338580bc86d",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "brook",
+      "messages": [],
+      "total_additions": 84,
+      "total_deletions": 65,
+      "accepted_lines": 84,
+      "overriden_lines": 0
+    }
+  }
+}
