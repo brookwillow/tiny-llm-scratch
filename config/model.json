@@ -1,6 +1,6 @@
 {
   "vocab_size": 6400,
-  "context_length": 256,
+  "context_length": 768,
   "hidden_size": 768,
   "num_layers": 12,
   "num_heads": 12
