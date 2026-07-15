@@ -1,12 +1,14 @@
 """
-数据准备脚本：从 ModelScope 下载 pretrain_t2t.jsonl / sft_t2t.jsonl，并完成训练前处理。
+数据准备脚本：从 ModelScope 下载 pretrain_t2t.jsonl / sft_t2t.jsonl / dpo.jsonl，并完成训练前处理。
 
 pretrain 数据会编码为训练脚本可直接读取的 uint16 二进制文件。
 SFT 数据只做格式归一化和 train/val 拆分，不在 prepare 阶段 tokenizer。
+DPO 数据保留 chosen/rejected 偏好对，只做格式归一化和 train/val 拆分。
 
 用法:
     python data/prepare_data.py --mode pretrain
     python data/prepare_data.py --mode sft
+    python data/prepare_data.py --mode dpo
     python data/prepare_data.py --mode all
 
 输出:
@@ -14,6 +16,8 @@ SFT 数据只做格式归一化和 train/val 拆分，不在 prepare 阶段 toke
     data/val.bin    — 验证集 (10%)
     data/sft_train.jsonl — SFT 训练集 raw messages
     data/sft_val.jsonl   — SFT 验证集 raw messages
+    data/dpo_train.jsonl — DPO 训练集 raw preference pairs
+    data/dpo_val.jsonl   — DPO 验证集 raw preference pairs
 """
 
 import os
@@ -36,13 +40,17 @@ from tokenizer.bpe_tokenizer import BPETokenizer
 DATASET_ID = "gongjy/minimind_dataset"
 DATASET_FILE = "pretrain_t2t.jsonl"
 SFT_DATASET_FILE = "sft_t2t.jsonl"
+DPO_DATASET_FILE = "dpo.jsonl"
 DATA_DIR = Path(__file__).resolve().parent
 RAW_FILE = DATA_DIR / DATASET_FILE
 SFT_RAW_FILE = DATA_DIR / SFT_DATASET_FILE
+DPO_RAW_FILE = DATA_DIR / DPO_DATASET_FILE
 TRAIN_BIN = DATA_DIR / "train.bin"
 VAL_BIN = DATA_DIR / "val.bin"
 SFT_TRAIN_JSONL = DATA_DIR / "sft_train.jsonl"
 SFT_VAL_JSONL = DATA_DIR / "sft_val.jsonl"
+DPO_TRAIN_JSONL = DATA_DIR / "dpo_train.jsonl"
+DPO_VAL_JSONL = DATA_DIR / "dpo_val.jsonl"
 VAL_RATIO = 0.1
 _WORKER_TOKENIZER = None
 
@@ -109,6 +117,10 @@ def download_dataset():
 
 def download_sft_dataset():
     download_dataset_file(SFT_DATASET_FILE, SFT_RAW_FILE)
+
+
+def download_dpo_dataset():
+    download_dataset_file(DPO_DATASET_FILE, DPO_RAW_FILE)
 
 
 def init_worker(vocab_path: str, merges_path: str):
@@ -366,6 +378,74 @@ def split_sft_jsonl_to_jsonl(
     }
 
 
+def normalize_dpo_messages(messages: list[dict]) -> list[dict[str, str]]:
+    from train.train_sft import normalize_sft_messages
+
+    if not isinstance(messages, list) or not messages:
+        raise ValueError("DPO chosen/rejected must be non-empty message lists")
+
+    normalized = normalize_sft_messages({"messages": messages})
+    if normalized[-1]["role"] != "assistant":
+        raise ValueError("DPO chosen/rejected must end with an assistant message")
+    return normalized
+
+
+def split_dpo_jsonl_to_jsonl(
+    raw_file: Path,
+    train_jsonl: Path,
+    val_jsonl: Path,
+    val_ratio: float,
+    max_lines: int | None,
+    log_interval: int,
+    total_lines: int | None,
+) -> dict[str, int]:
+    processed_lines = 0
+    train_samples = 0
+    val_samples = 0
+    skipped_lines = 0
+    started_at = time.time()
+
+    train_jsonl.parent.mkdir(parents=True, exist_ok=True)
+    val_jsonl.parent.mkdir(parents=True, exist_ok=True)
+
+    with raw_file.open("r", encoding="utf-8") as raw_f, train_jsonl.open("w", encoding="utf-8") as train_f, val_jsonl.open(
+        "w", encoding="utf-8"
+    ) as val_f:
+        for line_no, raw_line in enumerate(raw_f, start=1):
+            if max_lines is not None and processed_lines >= max_lines:
+                break
+            if not raw_line.strip():
+                continue
+
+            try:
+                sample = json.loads(raw_line)
+                chosen = normalize_dpo_messages(sample["chosen"])
+                rejected = normalize_dpo_messages(sample["rejected"])
+                processed_lines += 1
+                out_line = json.dumps({"chosen": chosen, "rejected": rejected}, ensure_ascii=False) + "\n"
+                if should_write_val(processed_lines, val_ratio):
+                    val_f.write(out_line)
+                    val_samples += 1
+                else:
+                    train_f.write(out_line)
+                    train_samples += 1
+            except Exception as exc:
+                skipped_lines += 1
+                if skipped_lines <= 5:
+                    print(f"跳过第 {line_no} 行: {exc}")
+
+            if log_interval > 0 and processed_lines > 0 and processed_lines % log_interval == 0:
+                print_sft_progress(processed_lines, train_samples, val_samples, started_at, total_lines)
+
+    print_sft_progress(processed_lines, train_samples, val_samples, started_at, total_lines)
+    return {
+        "processed_lines": processed_lines,
+        "train_samples": train_samples,
+        "val_samples": val_samples,
+        "skipped_lines": skipped_lines,
+    }
+
+
 def tokenize_and_save(args):
     """将 JSONL 数据编码为 token ids 并流式保存为二进制文件"""
     train_bin = Path(args.train_bin)
@@ -452,16 +532,55 @@ def split_sft_and_save(args):
     print(f"SFT 验证集: {stats['val_samples']:,} samples -> {val_jsonl}")
 
 
+def split_dpo_and_save(args):
+    """将 DPO JSONL 归一化为 chosen/rejected 偏好对，并拆分 train/val。"""
+    raw_file = Path(args.dpo_raw_file)
+    train_jsonl = Path(args.dpo_train_jsonl)
+    val_jsonl = Path(args.dpo_val_jsonl)
+
+    if (train_jsonl.exists() or val_jsonl.exists()) and not args.overwrite:
+        print(f"输出文件已存在: {train_jsonl}, {val_jsonl}")
+        print("如需重新生成，请加 --overwrite。")
+        return
+
+    total_lines = None
+    if not args.no_count_total:
+        print("正在统计 DPO 总行数用于 ETA ...")
+        total_lines = count_jsonl_lines(raw_file, max_lines=args.max_lines)
+        print(f"预计处理 DPO 行数: {total_lines:,}")
+
+    print(f"正在读取并拆分 DPO 数据 {raw_file} ...")
+    print(f"max_lines={args.max_lines}, val_ratio={args.val_ratio}")
+    stats = split_dpo_jsonl_to_jsonl(
+        raw_file=raw_file,
+        train_jsonl=train_jsonl,
+        val_jsonl=val_jsonl,
+        val_ratio=args.val_ratio,
+        max_lines=args.max_lines,
+        log_interval=args.log_interval,
+        total_lines=total_lines,
+    )
+
+    print("DPO 拆分完成")
+    print(f"处理行数: {stats['processed_lines']:,}")
+    print(f"跳过行数: {stats['skipped_lines']:,}")
+    print(f"DPO 训练集: {stats['train_samples']:,} samples -> {train_jsonl}")
+    print(f"DPO 验证集: {stats['val_samples']:,} samples -> {val_jsonl}")
+
+
 def parse_args():
-    parser = argparse.ArgumentParser(description="Prepare pretrain token bins and raw SFT JSONL splits.")
+    parser = argparse.ArgumentParser(description="Prepare pretrain token bins, raw SFT JSONL, and raw DPO preference pairs.")
     add_model_config_arg(parser, default=str(ROOT_DIR / "config" / "model.json"))
-    parser.add_argument("--mode", type=str, default="pretrain", choices=["pretrain", "sft", "all"])
+    parser.add_argument("--mode", type=str, default="pretrain", choices=["pretrain", "sft", "dpo", "all"])
     parser.add_argument("--raw_file", type=str, default=str(RAW_FILE))
     parser.add_argument("--train_bin", type=str, default=str(TRAIN_BIN))
     parser.add_argument("--val_bin", type=str, default=str(VAL_BIN))
     parser.add_argument("--sft_raw_file", type=str, default=str(SFT_RAW_FILE))
     parser.add_argument("--sft_train_jsonl", type=str, default=str(SFT_TRAIN_JSONL))
     parser.add_argument("--sft_val_jsonl", type=str, default=str(SFT_VAL_JSONL))
+    parser.add_argument("--dpo_raw_file", type=str, default=str(DPO_RAW_FILE))
+    parser.add_argument("--dpo_train_jsonl", type=str, default=str(DPO_TRAIN_JSONL))
+    parser.add_argument("--dpo_val_jsonl", type=str, default=str(DPO_VAL_JSONL))
     parser.add_argument("--val_ratio", type=float, default=VAL_RATIO)
     parser.add_argument("--max_lines", type=int, default=None)
     parser.add_argument("--num_workers", type=int, default=1)
@@ -480,7 +599,11 @@ if __name__ == "__main__":
             download_dataset()
         if args.mode in {"sft", "all"}:
             download_sft_dataset()
+        if args.mode in {"dpo", "all"}:
+            download_dpo_dataset()
     if args.mode in {"pretrain", "all"}:
         tokenize_and_save(args)
     if args.mode in {"sft", "all"}:
         split_sft_and_save(args)
+    if args.mode in {"dpo", "all"}:
+        split_dpo_and_save(args)

@@ -168,12 +168,13 @@ def parse_args():
     return parser.parse_args()
 
 
-class JsonlSFTDataset:
-    def __init__(self, path: str | Path, max_samples: int | None = None):
+class JsonlDataset:
+    def __init__(self, path: str | Path, dataset_name: str, max_samples: int | None = None):
         self.path = Path(path)
+        self.dataset_name = dataset_name
         self.offsets = self._build_offsets(max_samples=max_samples)
         if not self.offsets:
-            raise ValueError(f"no usable SFT lines found in {self.path}")
+            raise ValueError(f"no usable {self.dataset_name} lines found in {self.path}")
 
     def _build_offsets(self, max_samples: int | None) -> list[int]:
         offsets: list[int] = []
@@ -192,7 +193,7 @@ class JsonlSFTDataset:
                 if len(offsets) % 100000 == 0:
                     elapsed = max(time.time() - started_at, 1e-6)
                     print(f"  已索引 {len(offsets)} 行, 速度 {len(offsets) / elapsed:.1f} lines/s")
-        print(f"SFT 索引完成: {self.path}, samples={len(offsets)}")
+        print(f"{self.dataset_name} 索引完成: {self.path}, samples={len(offsets)}")
         return offsets
 
     def __len__(self) -> int:
@@ -206,6 +207,11 @@ class JsonlSFTDataset:
 
     def random_sample(self) -> dict:
         return self.get_sample(random.randrange(len(self.offsets)))
+
+
+class JsonlSFTDataset(JsonlDataset):
+    def __init__(self, path: str | Path, max_samples: int | None = None):
+        super().__init__(path, dataset_name="SFT", max_samples=max_samples)
 
 
 def get_sft_batch(dataset: JsonlSFTDataset, tokenizer, tokenizer_config: str, context_length: int, pad_id: int, batch_size: int, device: str):
