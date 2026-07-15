@@ -128,6 +128,8 @@ def parse_args():
 
     parser.add_argument("--sft_data_path", type=str, required=True)
     parser.add_argument("--valid_sft_data_path", type=str, default=None)
+    parser.add_argument("--extra_sft_data_path", type=str, default=None)
+    parser.add_argument("--extra_sft_ratio", type=float, default=0.0)
     parser.add_argument("--out_dir", type=str, default="train/sft_out")
     parser.add_argument("--init_checkpoint", type=str, default=None)
     parser.add_argument("--no_resume", action="store_true")
@@ -276,6 +278,8 @@ def evaluate(model, dataset, tokenizer, tokenizer_config: str, context_length: i
 def main():
     args = parse_args()
     resolve_model_config(args)
+    if not 0 <= args.extra_sft_ratio <= 1:
+        raise ValueError("--extra_sft_ratio must be between 0 and 1")
 
     import numpy as np
     import torch
@@ -305,6 +309,7 @@ def main():
 
     train_dataset = JsonlSFTDataset(args.sft_data_path, max_samples=args.max_samples)
     valid_dataset = JsonlSFTDataset(args.valid_sft_data_path, max_samples=args.max_samples) if args.valid_sft_data_path else train_dataset
+    extra_dataset = JsonlSFTDataset(args.extra_sft_data_path) if args.extra_sft_data_path and args.extra_sft_ratio > 0 else None
 
     pretrain_data = None
     if args.pretrain_data_path and args.pretrain_mix_ratio > 0:
@@ -349,6 +354,8 @@ def main():
         f"SFT 开始: train_samples={len(train_dataset)}, valid_samples={len(valid_dataset)}, "
         f"device={device}, batch_size={args.batch_size}, context={args.context_length}"
     )
+    if extra_dataset is not None:
+        print(f"额外 SFT 混入: samples={len(extra_dataset)}, ratio={args.extra_sft_ratio}")
 
     train_loss = None
     for it in range(start_iter, args.max_iters):
@@ -361,8 +368,11 @@ def main():
             x, y = get_batch(pretrain_data, args.batch_size, args.context_length, device)
             mask = torch.ones_like(y, dtype=torch.float32, device=device)
         else:
+            batch_dataset = train_dataset
+            if extra_dataset is not None and random.random() < args.extra_sft_ratio:
+                batch_dataset = extra_dataset
             x, y, mask = get_sft_batch(
-                train_dataset,
+                batch_dataset,
                 tokenizer,
                 args.tokenizer_config,
                 args.context_length,
