@@ -1,0 +1,25 @@
+tests/test_prepare_dpo.py
+  5a4e7a480e3ae9f0 1-55
+data/prepare_data.py
+  5a4e7a480e3ae9f0 2,6,11,19-20,43,47,52-53,122-125,381-425,535-568,572,574,581-583,602-603,608-609
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.24",
+  "base_commit_sha": "24a23326f05a5ec70b8bfffa89e69082c4fdde59",
+  "prompts": {
+    "5a4e7a480e3ae9f0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1e11-f24b-7150-b4ae-e338580bc86d",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "brook",
+      "messages": [],
+      "total_additions": 181,
+      "total_deletions": 3,
+      "accepted_lines": 181,
+      "overriden_lines": 0
+    }
+  }
+}
